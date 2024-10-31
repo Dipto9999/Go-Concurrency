@@ -44,7 +44,7 @@ func Test_printMessage(t *testing.T) {
 	}
 }
 
-func test_main(t *testing.T) {
+func Test_main(t *testing.T) {
 	stdOut := os.Stdout
 
 	r, w, _ := os.Pipe()
