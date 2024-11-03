@@ -77,11 +77,8 @@ func makePizza(id int) *PizzaOrder {
 			message: msg,
 			success: success,
 		}
-	} else {
-		return &PizzaOrder{
-			id: id,
-		}
 	}
+	return nil
 }
 
 /*
@@ -97,13 +94,17 @@ func pizzeria(pizzaMaker *Producer, wg *sync.WaitGroup) {
 		if currentPizza != nil {
 			i = currentPizza.id
 			select {
-			case pizzaMaker.data <- *currentPizza: // Tried to Make a Pizza
-			case quitChan := <-pizzaMaker.quit: // Send Chan Error to quitChan
+			case pizzaMaker.data <- *currentPizza: // Send Pizza Order to Customer
+			case quitChan := <-pizzaMaker.quit: // Listen for Quit Signal and Send Chan Error
 				// Close Channels
 				close(pizzaMaker.data)
 				close(quitChan)
 				return
 			}
+		} else {
+			// All Pizzas Have Been Attempted.
+			close(pizzaMaker.data) // Close Data Channel.
+			return
 		}
 	}
 }
@@ -112,19 +113,11 @@ func tourists(pizzaJob *Producer, wg *sync.WaitGroup) {
 	defer wg.Done()
 
 	for i := range pizzaJob.data {
-		if i.id <= NumberOfPizzas {
-			if i.success {
-				color.Green(i.message)
-				color.Green("Pizza Order ID#%d Out for Delivery!", i.id)
-			} else {
-				color.Red("Customer of Pizza Order ID#%d is Really Mad!", i.id)
-			}
+		if i.success {
+			color.Green(i.message)
+			color.Green("Pizza Order ID#%d Out for Delivery!", i.id)
 		} else {
-			color.Cyan("Done Making Pizzas...")
-			err := pizzaJob.Close()
-			if err != nil {
-				color.Red("*** Error Closing channel!", err)
-			}
+			color.Red("Customer of Pizza Order ID#%d is Really Mad!", i.id)
 		}
 	}
 }
@@ -146,6 +139,7 @@ func main() {
 	go tourists(pizzaJob, &wg)
 	wg.Wait()
 
+	color.Cyan("Done Making Pizzas...")
 	color.Cyan("----------------")
 	color.Green("Successfully Made %d Pizzas", pizzasMade)
 	color.Red("Failed to Make %d Pizzas", pizzasFailed)
