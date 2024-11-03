@@ -9,18 +9,19 @@ import (
 	"github.com/fatih/color"
 )
 
-const NumberOfPizzas = 10
+const NumberOfPizzas = 100
 
 var wg sync.WaitGroup
 var pizzasMade, pizzasFailed int
 
 var PIZZA_OUTCOMES = map[string]int{
+	"Kitchen_Fire":        1,
 	"Burned":              2,
 	"Missing_Ingredients": 4,
 	"Success":             5,
 }
 
-type Producer struct {
+type PizzaJobs struct {
 	data chan PizzaOrder
 	quit chan chan error
 }
@@ -31,7 +32,7 @@ type PizzaOrder struct {
 	success bool
 }
 
-func (p *Producer) Close() error {
+func (p *PizzaJobs) Close() error {
 	ch := make(chan error)
 	p.quit <- ch
 	return <-ch
@@ -50,26 +51,25 @@ func makePizza(id int) *PizzaOrder {
 	if id <= NumberOfPizzas {
 		fmt.Printf("Received Pizza Order ID#%d!\n", id)
 
-		outcome := rand.Intn(9) + 1
-		if outcome < PIZZA_OUTCOMES["Success"] {
-			pizzasFailed++
-		} else {
-			pizzasMade++
-		}
-
 		delay := rand.Intn(5) + 1
 		fmt.Printf("Making Pizza ID#%d. It will take %d s...\n", id, delay)
 		time.Sleep(time.Duration(delay) * time.Second) // Delay to Simulate Cooking
 
-		msg := ""
-		success := false
+		msg, outcome := "", rand.Intn(9)+1
 		if outcome <= PIZZA_OUTCOMES["Burned"] {
 			msg = fmt.Sprintf("*** Pizza ID#%d Burned in the Oven!", id)
 		} else if outcome <= PIZZA_OUTCOMES["Missing_Ingredients"] {
 			msg = fmt.Sprintf("*** Ran Out of Ingredients for Pizza ID#%d!", id)
 		} else {
-			success = true
 			msg = fmt.Sprintf("Pizza Order ID#%d is Ready!", id)
+		}
+
+		success := false
+		if outcome < PIZZA_OUTCOMES["Success"] {
+			pizzasFailed++
+		} else {
+			success = true
+			pizzasMade++
 		}
 
 		return &PizzaOrder{
@@ -85,34 +85,36 @@ func makePizza(id int) *PizzaOrder {
  * Keep Track of Which Pizza Being Made.
  * Run Forever or Until We Receive a Quit Notification.
  */
-func pizzeria(pizzaMaker *Producer, wg *sync.WaitGroup) {
+func pizzeria(pizzaJobs *PizzaJobs, wg *sync.WaitGroup) {
 	defer wg.Done()
 
 	var i = 0
 	for {
-		currentPizza := makePizza(i)
-		if currentPizza != nil {
-			i = currentPizza.id
-			select {
-			case pizzaMaker.data <- *currentPizza: // Send Pizza Order to Customer
-			case quitChan := <-pizzaMaker.quit: // Listen for Quit Signal and Send Chan Error
-				// Close Channels
-				close(pizzaMaker.data)
-				close(quitChan)
+		// Check for Quit Signal.
+		select {
+		case quitChan := <-pizzaJobs.quit:
+			// Close Channels
+			close(pizzaJobs.data)
+			close(quitChan)
+			return
+		default:
+			currentPizza := makePizza(i)
+			if currentPizza != nil {
+				i = currentPizza.id
+				pizzaJobs.data <- *currentPizza // Send Pizza Order to Customer.
+			} else {
+				// All Pizzas Have Been Attempted.
+				close(pizzaJobs.data) // Close Data Channel to signal completion.
 				return
 			}
-		} else {
-			// All Pizzas Have Been Attempted.
-			close(pizzaMaker.data) // Close Data Channel.
-			return
 		}
 	}
 }
 
-func tourists(pizzaJob *Producer, wg *sync.WaitGroup) {
+func tourists(pizzaJobs *PizzaJobs, wg *sync.WaitGroup) {
 	defer wg.Done()
 
-	for i := range pizzaJob.data {
+	for i := range pizzaJobs.data {
 		if i.success {
 			color.Green(i.message)
 			color.Green("Pizza Order ID#%d Out for Delivery!", i.id)
@@ -122,21 +124,50 @@ func tourists(pizzaJob *Producer, wg *sync.WaitGroup) {
 	}
 }
 
+/*
+ * Every Few Seconds, There is Risk of Kitchen Fire.
+ * In this Event, Pizzeria Will Shut Down for the Day.
+ */
+func kitchen_activities(pizzaJobs *PizzaJobs, wg *sync.WaitGroup) {
+	defer wg.Done()
+
+	for {
+		time.Sleep(time.Duration(rand.Intn(3)+1) * time.Second) // Check Every 1-4 s.
+
+		select {
+		case <-pizzaJobs.quit: // Exit if Quit Signal Received.
+			return
+		default:
+			outcome := rand.Intn(9) + 1
+			if outcome <= PIZZA_OUTCOMES["Kitchen_Fire"] {
+				// Simulate Early Shutdown.
+				color.HiRed("*** Panicking! Fire in Pizzeria!***\n***Everybody Leave the Premises! Shutting Down for the Day ***")
+				pizzaJobs.Close()
+
+				return
+			}
+		}
+	}
+}
+
 func main() {
 	rand.Seed(time.Now().UnixNano()) // Seed Random Number Generator
 
-	pizzaJob := &Producer{
+	pizzaJobs := &PizzaJobs{
 		data: make(chan PizzaOrder),
 		quit: make(chan chan error),
-	} // Create Producer
+	} // Create PizzaJobs
 
 	color.Cyan("The Pizzeria is Open for Business!")
 	color.Cyan("----------------------------------")
 
 	wg.Add(1)
-	go pizzeria(pizzaJob, &wg)
+	go pizzeria(pizzaJobs, &wg)
 	wg.Add(1)
-	go tourists(pizzaJob, &wg)
+	go tourists(pizzaJobs, &wg)
+	wg.Add(1)
+	go kitchen_activities(pizzaJobs, &wg)
+
 	wg.Wait()
 
 	color.Cyan("Done Making Pizzas...")
@@ -145,13 +176,13 @@ func main() {
 	color.Red("Failed to Make %d Pizzas", pizzasFailed)
 
 	switch {
-	case pizzasMade >= 9:
+	case pizzasMade >= 0.9*NumberOfPizzas:
 		color.Green("Amazing Day!")
-	case pizzasMade >= 6:
+	case pizzasMade >= 0.6*NumberOfPizzas:
 		color.Green("Mostly Productive Day!")
-	case pizzasMade == 5:
+	case pizzasMade >= 0.5*NumberOfPizzas:
 		color.Yellow("An Okay Day.")
-	case pizzasMade >= 3:
+	case pizzasMade >= 0.3*NumberOfPizzas:
 		color.Red("Not a Good Day!")
 	default:
 		color.Red("Awful Day!")
