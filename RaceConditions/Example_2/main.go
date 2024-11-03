@@ -28,8 +28,7 @@ func main() {
 		{Source: "Savings Account", Amount: 2},
 	} // Define Weekly Revenue
 
-	// Bank Balance
-	fmt.Printf("Initial Account Balance: $%d.00\n", bankBalance) // Starting Values
+	fmt.Printf("Initial Account Balance: $%d.00\n", bankBalance) // Starting Bank Balance
 
 	wg.Add(len(incomes))
 	// Determine How Much Made in 1 Year; Keep Running Total
@@ -48,5 +47,5 @@ func main() {
 	}
 	wg.Wait()
 
-	fmt.Printf("Final Bank Balance: $%d.00", bankBalance) // Final Balance
+	fmt.Printf("Final Bank Balance: $%d.00", bankBalance) // Final Bank Balance
 }
