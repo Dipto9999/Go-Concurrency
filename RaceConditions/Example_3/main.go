@@ -23,7 +23,7 @@ var PIZZA_OUTCOMES = map[string]int{
 
 type PizzaJobs struct {
 	data chan PizzaOrder
-	quit chan chan error
+	quit chan struct{}
 }
 
 type PizzaOrder struct {
@@ -32,10 +32,8 @@ type PizzaOrder struct {
 	success bool
 }
 
-func (p *PizzaJobs) Close() error {
-	ch := make(chan error)
-	p.quit <- ch
-	return <-ch
+func (p *PizzaJobs) Close() {
+	close(p.quit)
 }
 
 /*
@@ -46,7 +44,7 @@ func (p *PizzaJobs) Close() error {
  *  	iii) If outcome >= 5 : Pizza Successfully Made
  *	2) Pizzas Will Take Different Amounts of Time to Make.
  */
-func makePizza(id int) *PizzaOrder {
+func makePizza(id int, quit chan struct{}) *PizzaOrder {
 	id++
 	if id <= NumberOfPizzas {
 		fmt.Printf("Received Pizza Order ID#%d!\n", id)
@@ -55,27 +53,32 @@ func makePizza(id int) *PizzaOrder {
 		fmt.Printf("Making Pizza ID#%d. It will take %d s...\n", id, delay)
 		time.Sleep(time.Duration(delay) * time.Second) // Delay to Simulate Cooking
 
-		msg, outcome := "", rand.Intn(9)+1
-		if outcome <= PIZZA_OUTCOMES["Burned"] {
-			msg = fmt.Sprintf("*** Pizza ID#%d Burned in the Oven!", id)
-		} else if outcome <= PIZZA_OUTCOMES["Missing_Ingredients"] {
-			msg = fmt.Sprintf("*** Ran Out of Ingredients for Pizza ID#%d!", id)
-		} else {
-			msg = fmt.Sprintf("Pizza Order ID#%d is Ready!", id)
-		}
+		select {
+		case <-quit:
+			return nil // Stop Making Pizza.
+		default:
+			msg, outcome := "", rand.Intn(9)+1
+			if outcome <= PIZZA_OUTCOMES["Burned"] {
+				msg = fmt.Sprintf("*** Pizza ID#%d Burned in the Oven!", id)
+			} else if outcome <= PIZZA_OUTCOMES["Missing_Ingredients"] {
+				msg = fmt.Sprintf("*** Ran Out of Ingredients for Pizza ID#%d!", id)
+			} else {
+				msg = fmt.Sprintf("Pizza Order ID#%d is Ready!", id)
+			}
 
-		success := false
-		if outcome < PIZZA_OUTCOMES["Success"] {
-			pizzasFailed++
-		} else {
-			success = true
-			pizzasMade++
-		}
+			success := false
+			if outcome < PIZZA_OUTCOMES["Success"] {
+				pizzasFailed++
+			} else {
+				success = true
+				pizzasMade++
+			}
 
-		return &PizzaOrder{
-			id:      id,
-			message: msg,
-			success: success,
+			return &PizzaOrder{
+				id:      id,
+				message: msg,
+				success: success,
+			}
 		}
 	}
 	return nil
@@ -92,13 +95,12 @@ func pizzeria(pizzaJobs *PizzaJobs, wg *sync.WaitGroup) {
 	for {
 		// Check for Quit Signal.
 		select {
-		case quitChan := <-pizzaJobs.quit:
+		case <-pizzaJobs.quit:
 			// Close Channels
 			close(pizzaJobs.data)
-			close(quitChan)
 			return
 		default:
-			currentPizza := makePizza(i)
+			currentPizza := makePizza(i, pizzaJobs.quit)
 			if currentPizza != nil {
 				i = currentPizza.id
 				pizzaJobs.data <- *currentPizza // Send Pizza Order to Customer.
@@ -111,6 +113,9 @@ func pizzeria(pizzaJobs *PizzaJobs, wg *sync.WaitGroup) {
 	}
 }
 
+/*
+ * Tourists Expecting to Consume NumberOfPizzas.
+ */
 func tourists(pizzaJobs *PizzaJobs, wg *sync.WaitGroup) {
 	defer wg.Done()
 
@@ -155,7 +160,7 @@ func main() {
 
 	pizzaJobs := &PizzaJobs{
 		data: make(chan PizzaOrder),
-		quit: make(chan chan error),
+		quit: make(chan struct{}),
 	} // Create PizzaJobs
 
 	color.Cyan("The Pizzeria is Open for Business!")
