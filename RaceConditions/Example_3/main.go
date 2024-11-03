@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"math/rand"
+	"sync"
 	"time"
 
 	"github.com/fatih/color"
@@ -10,6 +11,7 @@ import (
 
 const NumberOfPizzas = 10
 
+var wg sync.WaitGroup
 var pizzasMade, pizzasFailed int
 
 var PIZZA_OUTCOMES = map[string]int{
@@ -86,7 +88,9 @@ func makePizza(id int) *PizzaOrder {
  * Keep Track of Which Pizza Being Made.
  * Run Forever or Until We Receive a Quit Notification.
  */
-func pizzeria(pizzaMaker *Producer) {
+func pizzeria(pizzaMaker *Producer, wg *sync.WaitGroup) {
+	defer wg.Done()
+
 	var i = 0
 	for {
 		currentPizza := makePizza(i)
@@ -104,18 +108,9 @@ func pizzeria(pizzaMaker *Producer) {
 	}
 }
 
-func main() {
-	rand.Seed(time.Now().UnixNano()) // Seed Random Number Generator
-	color.Cyan("The Pizzeria is Open for Business!")
-	color.Cyan("----------------------------------")
+func tourists(pizzaJob *Producer, wg *sync.WaitGroup) {
+	defer wg.Done()
 
-	pizzaJob := &Producer{
-		data: make(chan PizzaOrder),
-		quit: make(chan chan error),
-	} // Create Producer
-	go pizzeria(pizzaJob)
-
-	// Create Consumer
 	for i := range pizzaJob.data {
 		if i.id <= NumberOfPizzas {
 			if i.success {
@@ -132,6 +127,25 @@ func main() {
 			}
 		}
 	}
+}
+
+func main() {
+	rand.Seed(time.Now().UnixNano()) // Seed Random Number Generator
+
+	pizzaJob := &Producer{
+		data: make(chan PizzaOrder),
+		quit: make(chan chan error),
+	} // Create Producer
+
+	color.Cyan("The Pizzeria is Open for Business!")
+	color.Cyan("----------------------------------")
+
+	wg.Add(1)
+	go pizzeria(pizzaJob, &wg)
+	wg.Add(1)
+	go tourists(pizzaJob, &wg)
+	wg.Wait()
+
 	color.Cyan("----------------")
 	color.Green("Successfully Made %d Pizzas", pizzasMade)
 	color.Red("Failed to Make %d Pizzas", pizzasFailed)
