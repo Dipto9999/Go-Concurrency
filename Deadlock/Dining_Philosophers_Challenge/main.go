@@ -23,10 +23,15 @@ type Philosopher struct {
 	rightFork int
 }
 
-const HUNGER = 100
-const THINK_TIME = 300 * time.Millisecond
-const EAT_TIME = 100 * time.Millisecond
-const SLEEP_TIME = 100 * time.Millisecond
+var seated = &sync.WaitGroup{}
+var hungry = &sync.WaitGroup{}
+var forks = make(map[int]*sync.Mutex)
+var cashier = &sync.Mutex{}
+
+var HUNGER = 10
+var THINK_TIME = 300 * time.Millisecond
+var EAT_TIME = 100 * time.Millisecond
+var SLEEP_TIME = 100 * time.Millisecond
 
 var DINING_OPTIONS = map[string]int{
 	"UNINTERRUPTED": 1,
@@ -40,12 +45,22 @@ var philosophers = []Philosopher{
 	{name: "Locke", leftFork: 3, rightFork: 4},
 }
 
-var seated = &sync.WaitGroup{}
-var hungry = &sync.WaitGroup{}
-var forks = make(map[int]*sync.Mutex)
-var cashier = &sync.Mutex{}
-
 var paid []string
+
+func think(philosopher Philosopher) {
+	color.Black("Philosopher %s is Thinking...", philosopher.name)
+	time.Sleep(THINK_TIME)
+}
+
+/*
+ * Keep Track of Order in Which Philosopher's Pay Bill.
+ */
+func pay(philosopher Philosopher) {
+	cashier.Lock()
+	paid = append(paid, philosopher.name)
+	color.HiGreen("Philosopher %s Has Paid Bill!", philosopher.name)
+	cashier.Unlock()
+}
 
 func eat(philosopher Philosopher, forks map[int]*sync.Mutex) {
 	color.Green("Philosopher %s is Eating...", philosopher.name)
@@ -53,11 +68,6 @@ func eat(philosopher Philosopher, forks map[int]*sync.Mutex) {
 	forks[philosopher.leftFork].Unlock()
 	forks[philosopher.rightFork].Unlock()
 	color.Green("Philosopher %s Has Released Forks %d and %d", philosopher.name, philosopher.leftFork, philosopher.rightFork)
-}
-
-func think(philosopher Philosopher) {
-	color.Black("Philosopher %s is Thinking...", philosopher.name)
-	time.Sleep(THINK_TIME)
 }
 
 func dine_uninterrupted(philosopher Philosopher, forks map[int]*sync.Mutex) {
@@ -100,14 +110,6 @@ func dine_symmetrical(philosopher Philosopher, forks map[int]*sync.Mutex) {
 		eat(philosopher, forks)
 		think(philosopher)
 	}
-}
-
-func pay(philosopher Philosopher) {
-	// Keep Track of Order in Which Philosopher's Pay Bill.
-	cashier.Lock()
-	paid = append(paid, philosopher.name)
-	color.HiGreen("Philosopher %s Has Paid Bill!", philosopher.name)
-	cashier.Unlock()
 }
 
 func dine(philosopher Philosopher, forks map[int]*sync.Mutex, how int) {
