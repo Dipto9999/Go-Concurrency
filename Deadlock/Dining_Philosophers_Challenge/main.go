@@ -73,7 +73,7 @@ func dine_uninterrupted(philosopher Philosopher, forks map[int]*sync.Mutex) {
 			color.Green("Philosopher %s Takes Fork %d on Right.", philosopher.name, philosopher.rightFork)
 		} else {
 			forks[philosopher.leftFork].Unlock()
-			color.Red("Philosopher %s Releases Fork %d on Left.", philosopher.name, philosopher.leftFork)
+			color.Black("Philosopher %s Released Fork %d on Left.", philosopher.name, philosopher.leftFork)
 		}
 
 		if acquired {
@@ -102,6 +102,14 @@ func dine_symmetrical(philosopher Philosopher, forks map[int]*sync.Mutex) {
 	}
 }
 
+func pay(philosopher Philosopher) {
+	// Keep Track of Order in Which Philosopher's Pay Bill.
+	cashier.Lock()
+	paid = append(paid, philosopher.name)
+	color.HiGreen("Philosopher %s Has Paid Bill!", philosopher.name)
+	cashier.Unlock()
+}
+
 func dine(philosopher Philosopher, forks map[int]*sync.Mutex, how int) {
 	defer hungry.Done()
 
@@ -116,12 +124,9 @@ func dine(philosopher Philosopher, forks map[int]*sync.Mutex, how int) {
 	} else {
 		dine_uninterrupted(philosopher, forks)
 	}
-
 	color.HiGreen("Philosopher %s Has Finished Dining!", philosopher.name)
-	cashier.Lock()
-	paid = append(paid, philosopher.name)
-	color.HiGreen("Philosopher %s Has Paid Bill!", philosopher.name)
-	cashier.Unlock()
+
+	pay(philosopher)
 }
 
 func main() {
@@ -137,7 +142,7 @@ func main() {
 
 	// Start Meal
 	for i := 0; i < len(philosophers); i++ {
-		go dine(philosophers[i], forks, DINING_OPTIONS["SYMMETRICAL"]) // Fire off Go Routine for Current Philosopher
+		go dine(philosophers[i], forks, DINING_OPTIONS["UNINTERRUPTED"]) // Fire off Go Routine for Current Philosopher
 	}
 	hungry.Wait()
 
