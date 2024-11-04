@@ -1,4 +1,4 @@
-module producer-consumer-challenge
+module pizzeria-challenge
 
 go 1.23.2
 
