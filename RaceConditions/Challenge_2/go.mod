@@ -1,4 +1,4 @@
-module producer-consumer-example
+module producer-consumer-challenge
 
 go 1.23.2
 
