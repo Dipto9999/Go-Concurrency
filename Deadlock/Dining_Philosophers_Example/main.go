@@ -23,6 +23,15 @@ type Philosopher struct {
 	rightFork int
 }
 
+const HUNGER = 100
+const THINK_TIME = 300 * time.Millisecond
+const EAT_TIME = 100 * time.Millisecond
+const SLEEP_TIME = 100 * time.Millisecond
+
+var DINING_OPTIONS = map[string]int{
+	"UNINTERRUPTED": 1,
+	"SYMMETRICAL":   2,
+}
 var philosophers = []Philosopher{
 	{name: "Plato", leftFork: 4, rightFork: 0},
 	{name: "Socrates", leftFork: 0, rightFork: 1},
@@ -31,19 +40,12 @@ var philosophers = []Philosopher{
 	{name: "Locke", leftFork: 3, rightFork: 4},
 }
 
-const HUNGER = 100
-const THINK_TIME = 300 * time.Millisecond
-const EAT_TIME = 100 * time.Millisecond
-const SLEEP_TIME = 100 * time.Millisecond
-
 var seated = &sync.WaitGroup{}
 var hungry = &sync.WaitGroup{}
 var forks = make(map[int]*sync.Mutex)
+var cashier = &sync.Mutex{}
 
-var DINING_OPTIONS = map[string]int{
-	"UNINTERRUPTED": 1,
-	"SYMMETRICAL":   2,
-}
+var paid []string
 
 func eat(philosopher Philosopher, forks map[int]*sync.Mutex) {
 	color.Green("Philosopher %s is Eating...", philosopher.name)
@@ -79,8 +81,6 @@ func dine_uninterrupted(philosopher Philosopher, forks map[int]*sync.Mutex) {
 		}
 		think(philosopher)
 	}
-
-	color.HiGreen("Philosopher %s Has Finished Dining!", philosopher.name)
 }
 
 func dine_symmetrical(philosopher Philosopher, forks map[int]*sync.Mutex) {
@@ -100,8 +100,6 @@ func dine_symmetrical(philosopher Philosopher, forks map[int]*sync.Mutex) {
 		eat(philosopher, forks)
 		think(philosopher)
 	}
-
-	color.HiGreen("Philosopher %s Has Finished Dining!", philosopher.name)
 }
 
 func dine(philosopher Philosopher, forks map[int]*sync.Mutex, how int) {
@@ -118,6 +116,12 @@ func dine(philosopher Philosopher, forks map[int]*sync.Mutex, how int) {
 	} else {
 		dine_uninterrupted(philosopher, forks)
 	}
+
+	color.HiGreen("Philosopher %s Has Finished Dining!", philosopher.name)
+	cashier.Lock()
+	paid = append(paid, philosopher.name)
+	color.HiGreen("Philosopher %s Has Paid Bill!", philosopher.name)
+	cashier.Unlock()
 }
 
 func main() {
@@ -136,6 +140,11 @@ func main() {
 		go dine(philosophers[i], forks, DINING_OPTIONS["SYMMETRICAL"]) // Fire off Go Routine for Current Philosopher
 	}
 	hungry.Wait()
+
+	color.HiBlack("Order of Completion")
+	for i, philosopher := range paid {
+		color.HiBlack("%d: %s", i, philosopher)
+	}
 
 	color.Cyan("----------------------------")
 	color.Cyan("Table is Empty")
