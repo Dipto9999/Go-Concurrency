@@ -1,4 +1,4 @@
-module dining-philosophers-challenge
+module dining-philosophers
 
 go 1.23.2
 
