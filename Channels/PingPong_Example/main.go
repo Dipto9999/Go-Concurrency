@@ -5,9 +5,13 @@ import (
 	"strings"
 )
 
+/*
+ * Takes String from Ping Channel, Converts to Uppercase and Appends
+ * Exclamation Mark. Converted String is Sent to Pong Channel.
+ */
 func shout(ping <-chan string, pong chan<- string) {
 	for {
-		s := <-ping
+		s := <-ping // Read from Pong Channel (Blocking)
 		pong <- fmt.Sprintf("%s!", strings.ToUpper(s))
 	}
 }
