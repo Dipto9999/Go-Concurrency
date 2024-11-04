@@ -40,6 +40,11 @@ var seated = &sync.WaitGroup{}
 var hungry = &sync.WaitGroup{}
 var forks = make(map[int]*sync.Mutex)
 
+var DINING_OPTIONS = map[string]int{
+	"UNINTERRUPTED": 1,
+	"SYMMETRICAL":   2,
+}
+
 func eat(philosopher Philosopher, forks map[int]*sync.Mutex) {
 	color.Green("Philosopher %s is Eating...", philosopher.name)
 	time.Sleep(EAT_TIME)
@@ -53,15 +58,7 @@ func think(philosopher Philosopher) {
 	time.Sleep(THINK_TIME)
 }
 
-func dine(philosopher Philosopher, forks map[int]*sync.Mutex) {
-	defer hungry.Done()
-
-	// Seat Philosopher at Table.
-	color.Black("Philosopher %s Seated at Table.", philosopher.name)
-	seated.Done()
-
-	seated.Wait()
-
+func dine_uninterrupted(philosopher Philosopher, forks map[int]*sync.Mutex) {
 	acquired := false
 	for i := HUNGER; i > 0; i-- {
 		acquired = false
@@ -86,6 +83,43 @@ func dine(philosopher Philosopher, forks map[int]*sync.Mutex) {
 	color.HiGreen("Philosopher %s Has Finished Dining!", philosopher.name)
 }
 
+func dine_symmetrical(philosopher Philosopher, forks map[int]*sync.Mutex) {
+	for i := HUNGER; i > 0; i-- {
+		if philosopher.leftFork%2 == 0 {
+			forks[philosopher.leftFork].Lock()
+			color.Green("Philosopher %s Takes Fork %d on Left.", philosopher.name, philosopher.leftFork)
+			forks[philosopher.rightFork].Lock()
+			color.Green("Philosopher %s Takes Fork %d on Right.", philosopher.name, philosopher.rightFork)
+		} else {
+			forks[philosopher.rightFork].Lock()
+			color.Green("Philosopher %s Takes Fork %d on Right.", philosopher.name, philosopher.rightFork)
+			forks[philosopher.leftFork].Lock()
+			color.Green("Philosopher %s Takes Fork %d on Left.", philosopher.name, philosopher.leftFork)
+		}
+
+		eat(philosopher, forks)
+		think(philosopher)
+	}
+
+	color.HiGreen("Philosopher %s Has Finished Dining!", philosopher.name)
+}
+
+func dine(philosopher Philosopher, forks map[int]*sync.Mutex, how int) {
+	defer hungry.Done()
+
+	// Seat Philosopher at Table.
+	color.Black("Philosopher %s Seated at Table.", philosopher.name)
+	seated.Done()
+
+	seated.Wait()
+
+	if how == DINING_OPTIONS["SYMMETRICAL"] {
+		dine_symmetrical(philosopher, forks)
+	} else {
+		dine_uninterrupted(philosopher, forks)
+	}
+}
+
 func main() {
 	seated.Add(len(philosophers))
 	hungry.Add(len(philosophers))
@@ -99,7 +133,7 @@ func main() {
 
 	// Start Meal
 	for i := 0; i < len(philosophers); i++ {
-		go dine(philosophers[i], forks) // Fire off Go Routine for Current Philosopher
+		go dine(philosophers[i], forks, DINING_OPTIONS["SYMMETRICAL"]) // Fire off Go Routine for Current Philosopher
 	}
 	hungry.Wait()
 
