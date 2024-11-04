@@ -14,16 +14,16 @@ const NumberOfPizzas = 100
 var wg sync.WaitGroup
 var pizzasMade, pizzasFailed int
 
-var PIZZA_OUTCOMES = map[string]int{
-	"Kitchen_Fire":        1,
-	"Burned":              2,
-	"Missing_Ingredients": 4,
-	"Success":             5,
+var KITCHEN_OUTCOMES = map[string]int{
+	"Fire":                1,
+	"Pizza_Burned":        2,
+	"Pizza_NoIngredients": 4,
+	"Pizza_Success":       5,
 }
 
-type PizzaJobs struct {
-	data chan PizzaOrder
-	quit chan struct{}
+type Pizzeria struct {
+	pizzaOrders chan PizzaOrder
+	quit        chan struct{}
 }
 
 type PizzaOrder struct {
@@ -32,7 +32,7 @@ type PizzaOrder struct {
 	success bool
 }
 
-func (p *PizzaJobs) Close() {
+func (p *Pizzeria) Close() {
 	close(p.quit)
 }
 
@@ -58,16 +58,16 @@ func makePizza(id int, quit chan struct{}) *PizzaOrder {
 			return nil // Stop Making Pizza.
 		default:
 			msg, outcome := "", rand.Intn(9)+1
-			if outcome <= PIZZA_OUTCOMES["Burned"] {
+			if outcome <= KITCHEN_OUTCOMES["Pizza_Burned"] {
 				msg = fmt.Sprintf("*** Pizza ID#%d Burned in the Oven!", id)
-			} else if outcome <= PIZZA_OUTCOMES["Missing_Ingredients"] {
+			} else if outcome <= KITCHEN_OUTCOMES["Pizza_NoIngredients"] {
 				msg = fmt.Sprintf("*** Ran Out of Ingredients for Pizza ID#%d!", id)
 			} else {
 				msg = fmt.Sprintf("Pizza Order ID#%d is Ready!", id)
 			}
 
 			success := false
-			if outcome < PIZZA_OUTCOMES["Success"] {
+			if outcome < KITCHEN_OUTCOMES["Pizza_Success"] {
 				pizzasFailed++
 			} else {
 				success = true
@@ -88,25 +88,25 @@ func makePizza(id int, quit chan struct{}) *PizzaOrder {
  * Keep Track of Which Pizza Being Made.
  * Run Forever or Until We Receive a Quit Notification.
  */
-func pizzeria(pizzaJobs *PizzaJobs, wg *sync.WaitGroup) {
+func (pizzeria *Pizzeria) kitchen(wg *sync.WaitGroup) {
 	defer wg.Done()
 
 	var i = 0
 	for {
 		// Check for Quit Signal.
 		select {
-		case <-pizzaJobs.quit:
+		case <-pizzeria.quit:
 			// Close Channels
-			close(pizzaJobs.data)
+			close(pizzeria.pizzaOrders)
 			return
 		default:
-			currentPizza := makePizza(i, pizzaJobs.quit)
+			currentPizza := makePizza(i, pizzeria.quit)
 			if currentPizza != nil {
 				i = currentPizza.id
-				pizzaJobs.data <- *currentPizza // Send Pizza Order to Customer.
+				pizzeria.pizzaOrders <- *currentPizza // Send Pizza Order to Customer.
 			} else {
 				// All Pizzas Have Been Attempted.
-				close(pizzaJobs.data) // Close Data Channel to signal completion.
+				close(pizzeria.pizzaOrders) // Close pizzaOrders Channel to signal completion.
 				return
 			}
 		}
@@ -116,10 +116,10 @@ func pizzeria(pizzaJobs *PizzaJobs, wg *sync.WaitGroup) {
 /*
  * Tourists Expecting to Consume NumberOfPizzas.
  */
-func tourists(pizzaJobs *PizzaJobs, wg *sync.WaitGroup) {
+func (pizzeria *Pizzeria) tourists(wg *sync.WaitGroup) {
 	defer wg.Done()
 
-	for i := range pizzaJobs.data {
+	for i := range pizzeria.pizzaOrders {
 		if i.success {
 			color.Green(i.message)
 			color.Green("Pizza Order ID#%d Out for Delivery!", i.id)
@@ -133,21 +133,21 @@ func tourists(pizzaJobs *PizzaJobs, wg *sync.WaitGroup) {
  * Every Few Seconds, There is Risk of Kitchen Fire.
  * In this Event, Pizzeria Will Shut Down for the Day.
  */
-func kitchen_activities(pizzaJobs *PizzaJobs, wg *sync.WaitGroup) {
+func (pizzeria *Pizzeria) maintenance(wg *sync.WaitGroup) {
 	defer wg.Done()
 
 	for {
 		time.Sleep(time.Duration(rand.Intn(3)+1) * time.Second) // Check Every 1-4 s.
 
 		select {
-		case <-pizzaJobs.quit: // Exit if Quit Signal Received.
+		case <-pizzeria.quit: // Exit if Quit Signal Received.
 			return
 		default:
 			outcome := rand.Intn(9) + 1
-			if outcome <= PIZZA_OUTCOMES["Kitchen_Fire"] {
+			if outcome <= KITCHEN_OUTCOMES["Fire"] {
 				// Simulate Early Shutdown.
 				color.HiRed("*** Panicking! Fire in Pizzeria!***\n***Everybody Leave the Premises! Shutting Down for the Day ***")
-				pizzaJobs.Close()
+				pizzeria.Close()
 
 				return
 			}
@@ -158,20 +158,20 @@ func kitchen_activities(pizzaJobs *PizzaJobs, wg *sync.WaitGroup) {
 func main() {
 	rand.Seed(time.Now().UnixNano()) // Seed Random Number Generator
 
-	pizzaJobs := &PizzaJobs{
-		data: make(chan PizzaOrder),
-		quit: make(chan struct{}),
+	pizzeria := &Pizzeria{
+		pizzaOrders: make(chan PizzaOrder),
+		quit:        make(chan struct{}),
 	} // Create PizzaJobs
 
 	color.Cyan("The Pizzeria is Open for Business!")
 	color.Cyan("----------------------------------")
 
 	wg.Add(1)
-	go pizzeria(pizzaJobs, &wg)
+	go pizzeria.kitchen(&wg)
 	wg.Add(1)
-	go tourists(pizzaJobs, &wg)
+	go pizzeria.tourists(&wg)
 	wg.Add(1)
-	go kitchen_activities(pizzaJobs, &wg)
+	go pizzeria.maintenance(&wg)
 
 	wg.Wait()
 
